@@ -12,7 +12,7 @@
 To define a document mapping, you declare a Python class inherited from
 `Mapping`, and add any number of `Field` attributes:
 
->>> from jsonmapper import TextField, IntegerField, DateField
+>>> from jsonmapper import Mapping, TextField, IntegerField, DateTimeField
 >>> class Person(Mapping):
 ...     name = TextField()
 ...     age = IntegerField()
