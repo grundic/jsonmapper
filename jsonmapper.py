@@ -17,7 +17,7 @@ To define a document mapping, you declare a Python class inherited from
 ...     name = TextField()
 ...     age = IntegerField()
 ...     added = DateTimeField(default=datetime.now)
->>> person = Person(name='John Doe', age=42)
+>>> person = Person.from_kwargs(name='John Doe', age=42)
 >>> person #doctest: +ELLIPSIS
 <Person ...>
 >>> person.age
@@ -109,7 +109,6 @@ class MappingMeta(ABCMeta):
             fields.update(base_fields)
         for field_name, field_value in dct.items():
             if isinstance(field_value, Field):
-                # TODO: move this check to the name @property.
                 if not field_value.name:
                     field_value.name = field_name
                 fields[field_name] = field_value
@@ -120,7 +119,8 @@ class MappingMeta(ABCMeta):
 
 
 class Mapping(with_metaclass(MappingMeta), collections.MutableMapping):
-    def __init__(self, **values):
+    def __init__(self, values=None):
+        values = values or dict()
         self._data = {}
         for field_name, field in self._fields.items():
             if field_name in values:
@@ -158,6 +158,10 @@ class Mapping(with_metaclass(MappingMeta), collections.MutableMapping):
             fields[attrname] = attrval
         d['_fields'] = fields
         return type('AnonymousStruct', (cls,), d)
+
+    @classmethod
+    def from_kwargs(cls, **values):
+        return cls(values=values)
 
     @classmethod
     def wrap(cls, data):
@@ -296,7 +300,7 @@ class DictField(Field):
     ...     ))
     ...     extra = DictField()
 
-    >>> post = Post(
+    >>> post = Post.from_kwargs(
     ...     title='Foo bar',
     ...     author=dict(name='John Doe',
     ...                 email='john@doe.com'),
@@ -314,11 +318,11 @@ class DictField(Field):
     >>> class Blog(Mapping):
     ...   post = DictField(Post)
 
-    >>> blog = Blog.wrap({'post': {'title': 'Foo', 'author': {'name': 'Jane Doe', 'email': 'jane@doe.com'}, 'extra': {}}})
+    >>> blog = Blog({'post': {'title': 'Foo', 'author': {'name': 'Jane Doe', 'email': 'jane@doe.com'}, 'extra': {}}})
     >>> blog.post.title
     u'Foo'
 
-    >>> blog = Blog(post=post)
+    >>> blog = Blog.from_kwargs(post=post)
     >>> blog.post.author.name
     u'John Doe'
 
@@ -339,7 +343,7 @@ class DictField(Field):
         if self.mapping is None:
             return value
         if not isinstance(value, Mapping):
-            value = self.mapping(**value)
+            value = self.mapping.from_kwargs(**value)
         return value.unwrap()
 
 
@@ -402,7 +406,7 @@ class ListField(Field):
     ...         time = DateTimeField()
     ...     )))
 
-    >>> post = Post(title='Foo bar')
+    >>> post = Post.from_kwargs(title='Foo bar')
     >>> post.comments.append(author='myself', content='Bla bla',
     ...                      time=datetime.now())
     >>> len(post.comments)
