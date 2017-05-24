@@ -9,15 +9,14 @@
 
 from setuptools import setup
 
-
 setup(
-    name = 'JSONMapper',
-    version = '0.1',
-    description = 'Python JSON mapper',
-    long_description = '',
-    author = 'Matt Good',
-    author_email = 'matt@matt-good.net',
-    license = 'BSD',
-    url = '',
-    packages = ['jsonmapper'],
+    name='JSONMapper',
+    version='0.1',
+    description='Python JSON mapper',
+    long_description='',
+    author='Matt Good',
+    author_email='matt@matt-good.net',
+    license='BSD',
+    url='',
+    packages=['jsonmapper'],
 )
