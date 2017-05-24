@@ -26,12 +26,11 @@ To define a document mapping, you declare a Python class inherited from
 """
 
 import copy
-
+import sys
 from calendar import timegm
 from datetime import date, datetime, time
 from decimal import Decimal
 from time import strptime, struct_time
-
 
 __all__ = ['Mapping', 'Field', 'TextField', 'FloatField',
            'IntegerField', 'LongField', 'BooleanField', 'DecimalField',
@@ -40,7 +39,28 @@ __all__ = ['Mapping', 'Field', 'TextField', 'FloatField',
            ]
 __docformat__ = 'restructuredtext en'
 
-DEFAULT = object()
+# Python 2/3 compatibility helpers. These helpers are used internally and are
+# not exported.
+_METACLASS_ = '_metaclass_helper_'
+
+
+def with_metaclass(meta, base=object):
+    return meta(_METACLASS_, (base,), {})
+
+
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] == 3
+
+if PY3:
+    unicode_type = str
+    string_type = bytes
+    basestring = str
+    long = int
+elif PY2:
+    unicode_type = unicode
+    string_type = basestring
+else:
+    raise RuntimeError('Unsupported python version.')
 
 
 class Field(object):
@@ -73,38 +93,41 @@ class Field(object):
         instance._data[self.name] = value
 
     def _to_python(self, value):
-        return unicode(value)
+        return unicode_type(value)
 
     def _to_json(self, value):
         return self._to_python(value)
 
 
 class MappingMeta(type):
-
-    def __new__(cls, name, bases, d):
+    def __new__(mcs, name, bases, dct):
         fields = {}
         for base in bases:
             if hasattr(base, '_fields'):
                 fields.update(base._fields)
-        for attrname, attrval in d.items():
-            if isinstance(attrval, Field):
-                if not attrval.name:
-                    attrval.name = attrname
-                fields[attrname] = attrval
-        d['_fields'] = fields
-        return type.__new__(cls, name, bases, d)
+        for field_name, field_value in dct.items():
+            if isinstance(field_value, Field):
+                # TODO: move this check to the name @property.
+                if not field_value.name:
+                    field_value.name = field_name
+                fields[field_name] = field_value
+
+        cls = super(MappingMeta, mcs).__new__(mcs, name, bases, dct)
+        cls._fields = fields
+        return cls
 
 
-class Mapping(object):
-    __metaclass__ = MappingMeta
-
+class Mapping(with_metaclass(MappingMeta)):
+    #
+    # TODO: https://stackoverflow.com/questions/3387691/how-to-perfectly-override-a-dict
+    #
     def __init__(self, **values):
         self._data = {}
-        for attrname, field in self._fields.items():
-            if attrname in values:
-                setattr(self, attrname, values.pop(attrname))
+        for field_name, field in self._fields.items():
+            if field_name in values:
+                setattr(self, field_name, values.pop(field_name))
             else:
-                setattr(self, attrname, getattr(self, attrname))
+                setattr(self, field_name, getattr(self, field_name))
 
     def __repr__(self):
         return '<%s %r>' % (type(self).__name__, self._data)
@@ -177,7 +200,7 @@ class Mapping(object):
 
 class TextField(Field):
     """Mapping field for string values."""
-    _to_python = unicode
+    _to_python = unicode_type
 
 
 class FloatField(Field):
@@ -207,7 +230,7 @@ class DecimalField(Field):
         return Decimal(value)
 
     def _to_json(self, value):
-        return unicode(value)
+        return unicode_type(value)
 
 
 class DateField(Field):
@@ -251,8 +274,8 @@ class DateTimeField(Field):
     def _to_python(self, value):
         if isinstance(value, basestring):
             try:
-                value = value.split('.', 1)[0] # strip out microseconds
-                value = value.rstrip('Z') # remove timezone separator
+                value = value.split('.', 1)[0]  # strip out microseconds
+                value = value.rstrip('Z')  # remove timezone separator
                 value = datetime(*strptime(value, '%Y-%m-%dT%H:%M:%S')[:6])
             except ValueError:
                 raise ValueError('Invalid ISO date/time %r' % value)
@@ -281,7 +304,7 @@ class TimeField(Field):
     def _to_python(self, value):
         if isinstance(value, basestring):
             try:
-                value = value.split('.', 1)[0] # strip out microseconds
+                value = value.split('.', 1)[0]  # strip out microseconds
                 value = time(*strptime(value, '%H:%M:%S')[3:6])
             except ValueError:
                 raise ValueError('Invalid ISO time %r' % value)
@@ -332,6 +355,7 @@ class DictField(Field):
     u'John Doe'
 
     """
+
     def __init__(self, mapping=None, name=None, default=None):
         default = default or {}
         Field.__init__(self, name=name, default=lambda: default.copy())
@@ -368,6 +392,7 @@ class TypedField(Field):
     <Bar {'y': 'world', 'type': 'bar'}>
 
     """
+
     def __init__(self, mappings, type_key='type', name=None, default=None):
         if default is not None:
             default = lambda: default.copy()
@@ -381,12 +406,12 @@ class TypedField(Field):
 
     def _to_json(self, value):
         if isinstance(value, Mapping):
-            for value_type, mapping in self.mappings.iteritems():
+            for value_type, mapping in self.mappings.items():
                 if isinstance(value, mapping):
                     break
             else:
                 # FIXME better error message
-                 raise ValueError('Unknown value type')
+                raise ValueError('Unknown value type')
         else:
             value_type = value[self.type_key]
             mapping = self.mappings[value_type]
@@ -442,11 +467,10 @@ class ListField(Field):
     def _to_json(self, value):
         return [self.field._to_json(item) for item in value]
 
+    class Proxy(object):
 
-    class Proxy(list):
-
-        def __init__(self, list, field):
-            self.list = list
+        def __init__(self, list_, field):
+            self.list = list_
             self.field = field
 
         def __lt__(self, other):
@@ -474,7 +498,7 @@ class ListField(Field):
             return str(self.list)
 
         def __unicode__(self):
-            return unicode(self.list)
+            return unicode_type(self.list)
 
         def __delitem__(self, index):
             del self.list[index]
