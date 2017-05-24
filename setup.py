@@ -18,5 +18,5 @@ setup(
     author_email='matt@matt-good.net',
     license='BSD',
     url='',
-    packages=['jsonmapper'],
+    py_modules=['jsonmapper'],
 )
