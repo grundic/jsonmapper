@@ -24,9 +24,10 @@ To define a document mapping, you declare a Python class inherited from
 42
 
 """
-
+import collections
 import copy
 import sys
+from abc import ABCMeta
 from calendar import timegm
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -77,7 +78,7 @@ class Field(object):
     def __get__(self, instance, owner):
         if instance is None:
             return self
-        value = instance._data.get(self.name)
+        value = instance.get(self.name)
         if value is not None:
             value = self._to_python(value)
         elif self.default is not None:
@@ -90,7 +91,7 @@ class Field(object):
     def __set__(self, instance, value):
         if value is not None:
             value = self._to_json(value)
-        instance._data[self.name] = value
+        instance[self.name] = value
 
     def _to_python(self, value):
         return unicode_type(value)
@@ -99,12 +100,13 @@ class Field(object):
         return self._to_python(value)
 
 
-class MappingMeta(type):
+class MappingMeta(ABCMeta):
+    # noinspection PyInitNewSignature
     def __new__(mcs, name, bases, dct):
         fields = {}
         for base in bases:
-            if hasattr(base, '_fields'):
-                fields.update(base._fields)
+            base_fields = getattr(base, '_fields', {})
+            fields.update(base_fields)
         for field_name, field_value in dct.items():
             if isinstance(field_value, Field):
                 # TODO: move this check to the name @property.
@@ -117,10 +119,7 @@ class MappingMeta(type):
         return cls
 
 
-class Mapping(with_metaclass(MappingMeta)):
-    #
-    # TODO: https://stackoverflow.com/questions/3387691/how-to-perfectly-override-a-dict
-    #
+class Mapping(with_metaclass(MappingMeta), collections.MutableMapping):
     def __init__(self, **values):
         self._data = {}
         for field_name, field in self._fields.items():
@@ -132,26 +131,20 @@ class Mapping(with_metaclass(MappingMeta)):
     def __repr__(self):
         return '<%s %r>' % (type(self).__name__, self._data)
 
-    def __iter__(self):
-        return iter(self._data)
-
-    def __len__(self):
-        return len(self._data or ())
-
-    def __delitem__(self, name):
-        del self._data[name]
-
     def __getitem__(self, name):
         return self._data[name]
 
     def __setitem__(self, name, value):
         self._data[name] = value
 
-    def get(self, name, default=None):
-        return self._data.get(name, default)
+    def __delitem__(self, name):
+        del self._data[name]
 
-    def setdefault(self, name, default):
-        return self._data.setdefault(name, default)
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data or ())
 
     def unwrap(self):
         return self._data
@@ -177,25 +170,6 @@ class Mapping(with_metaclass(MappingMeta)):
 
     def _to_json(self, value):
         return self.unwrap()
-
-    def items(self):
-        """Return the fields as a list of ``(name, value)`` tuples.
-
-        This method is provided to enable easy conversion to native dictionary
-        objects, for example to allow use of `Mapping` instances with
-        `client.Database.update`.
-
-        >>> class Post(Mapping):
-        ...     id = TextField()
-        ...     title = TextField()
-        ...     author = TextField()
-        >>> post = Post(id='foo-bar', title='Foo bar', author='Joe')
-        >>> sorted(post.items())
-        [('author', u'Joe'), ('id', u'foo-bar'), ('title', u'Foo bar')]
-
-        :return: a list of ``(name, value)`` tuples
-        """
-        return self._data.items()
 
 
 class TextField(Field):
