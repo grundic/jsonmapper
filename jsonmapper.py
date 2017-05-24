@@ -165,12 +165,6 @@ class Mapping(with_metaclass(MappingMeta), collections.MutableMapping):
         instance._data = data
         return instance
 
-    def _to_python(self, value):
-        return self.wrap(value)
-
-    def _to_json(self, value):
-        return self.unwrap()
-
 
 class TextField(Field):
     """Mapping field for string values."""
